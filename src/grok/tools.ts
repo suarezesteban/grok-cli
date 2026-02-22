@@ -241,7 +241,14 @@ const BASE_GROK_TOOLS: GrokTool[] = [
       },
     },
   },
+  {
+    type: "web_search",
+  },
+  {
+    type: "x_search",
+  },
 ];
+
 
 // Morph Fast Apply tool (conditional)
 const MORPH_EDIT_TOOL: GrokTool = {
@@ -270,7 +277,9 @@ const MORPH_EDIT_TOOL: GrokTool = {
   }
 };
 
-// Function to build tools array conditionally
+/**
+ * Function to build tools array conditionally.
+ */
 function buildGrokTools(): GrokTool[] {
   const tools = [...BASE_GROK_TOOLS];
   
@@ -288,6 +297,12 @@ export const GROK_TOOLS: GrokTool[] = buildGrokTools();
 // Global MCP manager instance
 let mcpManager: MCPManager | null = null;
 
+/**
+ * Retrieves the singleton instance of the MCP (Model Context Protocol) manager,
+ * initializing it if necessary.
+ * 
+ * @returns MCP manager instance.
+ */
 export function getMCPManager(): MCPManager {
   if (!mcpManager) {
     mcpManager = new MCPManager();
@@ -295,6 +310,12 @@ export function getMCPManager(): MCPManager {
   return mcpManager;
 }
 
+/**
+ * Initializes all configured MCP servers based on the configuration file.
+ * Suppresses redundant stderr output during the connection process.
+ * 
+ * @returns Promise that resolves when initialization is complete.
+ */
 export async function initializeMCPServers(): Promise<void> {
   const manager = getMCPManager();
   const config = loadMCPConfig();
@@ -339,6 +360,13 @@ export async function initializeMCPServers(): Promise<void> {
   }
 }
 
+/**
+ * Converts an MCP tool definition (SDK format) into a format 
+ * recognizable by the Grok API (GrokTool).
+ * 
+ * @param mcpTool - MCP tool definition to convert.
+ * @returns Converted Grok tool definition.
+ */
 export function convertMCPToolToGrokTool(mcpTool: MCPTool): GrokTool {
   return {
     type: "function",
@@ -354,6 +382,13 @@ export function convertMCPToolToGrokTool(mcpTool: MCPTool): GrokTool {
   };
 }
 
+/**
+ * Generates a new tool array by integrating currently loaded MCP tools 
+ * into the specified base tool array.
+ * 
+ * @param baseTools - Base Grok tool array (built-in, search, etc.).
+ * @returns Integrated Grok tool array including MCP tools.
+ */
 export function addMCPToolsToGrokTools(baseTools: GrokTool[]): GrokTool[] {
   if (!mcpManager) {
     return baseTools;
@@ -365,6 +400,13 @@ export function addMCPToolsToGrokTools(baseTools: GrokTool[]): GrokTool[] {
   return [...baseTools, ...grokMCPTools];
 }
 
+/**
+ * Retrieves all available Grok tools.
+ * Includes built-in tools, web search, X search, and tools from configured MCP servers.
+ * Attempts to initialize MCP servers but returns results without blocking on failure.
+ * 
+ * @returns Promise resolving to an integrated array of all tools.
+ */
 export async function getAllGrokTools(): Promise<GrokTool[]> {
   const manager = getMCPManager();
   // Try to initialize servers if not already done, but don't block

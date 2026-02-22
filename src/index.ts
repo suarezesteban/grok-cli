@@ -40,7 +40,10 @@ process.on("unhandledRejection", (reason, promise) => {
   process.exit(1);
 });
 
-// Ensure user settings are initialized
+/**
+ * Ensures that the user settings directory (~/.grok) exists and 
+ * generates a default settings file if necessary.
+ */
 function ensureUserSettingsDirectory(): void {
   try {
     const manager = getSettingsManager();
@@ -51,19 +54,34 @@ function ensureUserSettingsDirectory(): void {
   }
 }
 
-// Load API key from user settings if not in environment
+/**
+ * Loads the Grok API key from environment variables or saved user settings.
+ * 
+ * @returns The retrieved API key, or undefined if not found.
+ */
 function loadApiKey(): string | undefined {
   const manager = getSettingsManager();
   return manager.getApiKey();
 }
 
-// Load base URL from user settings if not in environment
+/**
+ * Loads the base URL from saved user settings.
+ * 
+ * @returns The API base URL.
+ */
 function loadBaseURL(): string {
   const manager = getSettingsManager();
   return manager.getBaseURL();
 }
 
-// Save command line settings to user settings file
+/**
+ * Persists the API settings specified in command line arguments 
+ * to the user settings file.
+ * 
+ * @param apiKey - API key to save (optional).
+ * @param baseURL - Base URL to save (optional).
+ * @returns Promise that resolves when saving is complete.
+ */
 async function saveCommandLineSettings(
   apiKey?: string,
   baseURL?: string
@@ -88,7 +106,11 @@ async function saveCommandLineSettings(
   }
 }
 
-// Load model from user settings if not in environment
+/**
+ * Loads the AI model to use from environment variables or the settings file.
+ * 
+ * @returns The model name to use, or default value if not found in env/settings.
+ */
 function loadModel(): string | undefined {
   // First check environment variables
   let model = process.env.GROK_MODEL;
@@ -106,7 +128,15 @@ function loadModel(): string | undefined {
   return model;
 }
 
-// Handle commit-and-push command in headless mode
+/**
+ * Leverages AI to generate a commit message for current changes, 
+ * then automates staging, committing, and pushing (for headless execution).
+ * 
+ * @param apiKey - Grok API key.
+ * @param baseURL - API base URL (optional).
+ * @param model - Model name to use (optional).
+ * @param maxToolRounds - Maximum tool execution rounds.
+ */
 async function handleCommitAndPushHeadless(
   apiKey: string,
   baseURL?: string,
@@ -227,7 +257,16 @@ Respond with ONLY the commit message, no additional text.`;
   }
 }
 
-// Headless mode processing function
+/**
+ * Processes a single prompt and outputs the results in JSON format to stdout.
+ * Used when employing agent features without a UI.
+ * 
+ * @param prompt - Message text to process.
+ * @param apiKey - Grok API key.
+ * @param baseURL - API base URL (optional).
+ * @param model - Model name to use (optional).
+ * @param maxToolRounds - Maximum tool execution rounds.
+ */
 async function processPromptHeadless(
   prompt: string,
   apiKey: string,

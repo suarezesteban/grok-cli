@@ -40,6 +40,11 @@ export interface StreamingChunk {
   tokenCount?: number;
 }
 
+/**
+ * Main class to control the Grok AI agent, orchestrating tool execution, 
+ * chat history management, and interaction with the AI.
+ * Inherits from EventEmitter to emit events based on progress.
+ */
 export class GrokAgent extends EventEmitter {
   private grokClient: GrokClient;
   private textEditor: TextEditorTool;
@@ -55,6 +60,15 @@ export class GrokAgent extends EventEmitter {
   private mcpInitialized: boolean = false;
   private maxToolRounds: number;
 
+  /**
+   * Initializes a new instance of GrokAgent.
+   * Sets up various tools (file editing, Bash, TODO, search, etc.).
+   * 
+   * @param apiKey - Grok API key.
+   * @param baseURL - Optional base URL for the API.
+   * @param model - Optional model name (defaults to settings or Grok fast model).
+   * @param maxToolRounds - Maximum number of tool execution rounds per user message.
+   */
   constructor(
     apiKey: string,
     baseURL?: string,
@@ -88,7 +102,7 @@ export class GrokAgent extends EventEmitter {
     this.messages.push({
       role: "system",
       content: `You are Grok CLI, an AI assistant that helps with file editing, coding tasks, and system operations.${customInstructionsSection}
-
+ 
 You have access to these tools:
 - view_file: View file contents or directory listings
 - create_file: Create new files with content (ONLY use this for files that don't exist yet)
@@ -101,9 +115,12 @@ You have access to these tools:
 - search: Unified search tool for finding text content or files (similar to Cursor's search functionality)
 - create_todo_list: Create a visual todo list for planning and tracking tasks
 - update_todo_list: Update existing todos in your todo list
-
+- web_search: Perform a web search to find up-to-date information, news, and facts from the internet
+- x_search: Search the X platform (formerly Twitter) for latest trends and real-time posts
+ 
 REAL-TIME INFORMATION:
-You have access to real-time web search and X (Twitter) data. When users ask for current information, latest news, or recent events, you automatically have access to up-to-date information from the web and social media.
+You have access to real-time information via the built-in search tools (web_search and x_search). When users ask for current information, latest news, or recent events, use these tools to find the most accurate and up-to-date information.
+
 
 IMPORTANT TOOL USAGE RULES:
 - NEVER use create_file on files that already exist - this will overwrite them completely
@@ -172,34 +189,15 @@ Current working directory: ${process.cwd()}`,
     return currentModel.toLowerCase().includes("grok");
   }
 
-  // Heuristic: enable web search only when likely needed
-  private shouldUseSearchFor(message: string): boolean {
-    const q = message.toLowerCase();
-    const keywords = [
-      "today",
-      "latest",
-      "news",
-      "trending",
-      "breaking",
-      "current",
-      "now",
-      "recent",
-      "x.com",
-      "twitter",
-      "tweet",
-      "what happened",
-      "as of",
-      "update on",
-      "release notes",
-      "changelog",
-      "price",
-    ];
-    if (keywords.some((k) => q.includes(k))) return true;
-    // crude date pattern (e.g., 2024/2025) may imply recency
-    if (/(20\d{2})/.test(q)) return true;
-    return false;
-  }
 
+  /**
+   * Processes a message from the user, executes tools if necessary, 
+   * and returns the final response (non-streaming).
+   * 
+   * @param message - User input message text.
+   * @returns Array of new chat history entries.
+   * @throws Fatal error during tool execution or API communication.
+   */
   async processUserMessage(message: string): Promise<ChatEntry[]> {
     // Add user message to conversation
     const userEntry: ChatEntry = {
@@ -218,11 +216,7 @@ Current working directory: ${process.cwd()}`,
       const tools = await getAllGrokTools();
       let currentResponse = await this.grokClient.chat(
         this.messages,
-        tools,
-        undefined,
-        this.isGrokModel() && this.shouldUseSearchFor(message)
-          ? { search_parameters: { mode: "auto" } }
-          : { search_parameters: { mode: "off" } }
+        tools
       );
 
       // Agent loop - continue until no more tool calls or max rounds reached
@@ -314,11 +308,7 @@ Current working directory: ${process.cwd()}`,
           // Get next response - this might contain more tool calls
           currentResponse = await this.grokClient.chat(
             this.messages,
-            tools,
-            undefined,
-            this.isGrokModel() && this.shouldUseSearchFor(message)
-              ? { search_parameters: { mode: "auto" } }
-              : { search_parameters: { mode: "off" } }
+            tools
           );
         } else {
           // No more tool calls, add final response
@@ -392,6 +382,13 @@ Current working directory: ${process.cwd()}`,
     return reduce(previous, item.choices[0]?.delta || {});
   }
 
+  /**
+   * Processes a message from the user in a streaming format.
+   * Content, tool calls, token counts, etc. can be retrieved sequentially.
+   * 
+   * @param message - User input message text.
+   * @yields StreamingChunk objects representing each stage of the stream.
+   */
   async *processUserMessageStream(
     message: string
   ): AsyncGenerator<StreamingChunk, void, unknown> {
@@ -438,11 +435,7 @@ Current working directory: ${process.cwd()}`,
         const tools = await getAllGrokTools();
         const stream = this.grokClient.chatStream(
           this.messages,
-          tools,
-          undefined,
-          this.isGrokModel() && this.shouldUseSearchFor(message)
-            ? { search_parameters: { mode: "auto" } }
-            : { search_parameters: { mode: "off" } }
+          tools
         );
         let accumulatedMessage: any = {};
         let accumulatedContent = "";
@@ -605,6 +598,7 @@ Current working directory: ${process.cwd()}`,
       }
 
       yield { type: "done" };
+
     } catch (error: any) {
       // Check if this was a cancellation
       if (this.abortController?.signal.aborted) {
@@ -749,22 +743,49 @@ Current working directory: ${process.cwd()}`,
     }
   }
 
+  /**
+   * Retrieves the complete chat history.
+   * 
+   * @returns Copy of the chat history entries.
+   */
   getChatHistory(): ChatEntry[] {
     return [...this.chatHistory];
   }
 
+  /**
+   * Gets the current working directory as recognized by the agent.
+   * 
+   * @returns Absolute path of the directory.
+   */
   getCurrentDirectory(): string {
     return this.bash.getCurrentDirectory();
   }
 
+  /**
+   * Directly executes a Bash command in the current directory (for direct user input).
+   * 
+   * @param command - Shell command to execute.
+   * @returns Execution result (success/fail, output, error).
+   */
   async executeBashCommand(command: string): Promise<ToolResult> {
     return await this.bash.execute(command);
   }
 
+  /**
+   * Gets the AI model name currently being used by the agent.
+   * 
+   * @returns Model name.
+   */
   getCurrentModel(): string {
     return this.grokClient.getCurrentModel();
   }
 
+  /**
+   * Dynamically changes the AI model used by the agent.
+   * Token counter is also re-initialized after the change.
+   * 
+   * @param model - New model name.
+   */
   setModel(model: string): void {
     this.grokClient.setModel(model);
     // Update token counter for new model
@@ -772,6 +793,9 @@ Current working directory: ${process.cwd()}`,
     this.tokenCounter = createTokenCounter(model);
   }
 
+  /**
+   * Aborts the ongoing streaming operation or tool execution.
+   */
   abortCurrentOperation(): void {
     if (this.abortController) {
       this.abortController.abort();

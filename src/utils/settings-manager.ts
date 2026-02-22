@@ -34,7 +34,7 @@ export interface ProjectSettings {
  */
 const DEFAULT_USER_SETTINGS: Partial<UserSettings> = {
   baseURL: "https://api.x.ai/v1",
-  defaultModel: "grok-code-fast-1",
+  defaultModel: "grok-4-1-fast-reasoning",
   models: [
     // Grok 4.1 Fast models (2M context, latest - November 2025)
     "grok-4-1-fast-reasoning",
@@ -60,7 +60,7 @@ const DEFAULT_USER_SETTINGS: Partial<UserSettings> = {
  * Default values for project settings
  */
 const DEFAULT_PROJECT_SETTINGS: Partial<ProjectSettings> = {
-  model: "grok-code-fast-1",
+  model: "grok-4-1-fast-reasoning",
 };
 
 /**
@@ -89,7 +89,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get singleton instance
+   * Returns the singleton instance of SettingsManager.
    */
   public static getInstance(): SettingsManager {
     if (!SettingsManager.instance) {
@@ -99,7 +99,7 @@ export class SettingsManager {
   }
 
   /**
-   * Ensure directory exists for a given file path
+   * Ensures that the directory for a given file path exists.
    */
   private ensureDirectoryExists(filePath: string): void {
     const dir = path.dirname(filePath);
@@ -109,7 +109,9 @@ export class SettingsManager {
   }
 
   /**
-   * Load user settings from ~/.grok/user-settings.json
+   * Loads user settings from ~/.grok/user-settings.json.
+   * 
+   * @returns The user settings object.
    */
   public loadUserSettings(): UserSettings {
     try {
@@ -143,7 +145,11 @@ export class SettingsManager {
   }
 
   /**
-   * Migrate settings from an older version to the current version
+   * Migrates settings from an older version to the current version.
+   * 
+   * @param settings - Original settings.
+   * @param fromVersion - Current version of the settings file.
+   * @returns Migrated settings object.
    */
   private migrateSettings(settings: UserSettings, fromVersion: number): UserSettings {
     let migrated = { ...settings };
@@ -168,7 +174,9 @@ export class SettingsManager {
   }
 
   /**
-   * Save user settings to ~/.grok/user-settings.json
+   * Saves user settings to ~/.grok/user-settings.json.
+   * 
+   * @param settings - Settings to merge and save.
    */
   public saveUserSettings(settings: Partial<UserSettings>): void {
     try {
@@ -204,7 +212,7 @@ export class SettingsManager {
   }
 
   /**
-   * Update a specific user setting
+   * Updates a specific field in user settings.
    */
   public updateUserSetting<K extends keyof UserSettings>(
     key: K,
@@ -215,7 +223,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get a specific user setting
+   * Retrieves a specific field from user settings.
    */
   public getUserSetting<K extends keyof UserSettings>(key: K): UserSettings[K] {
     const settings = this.loadUserSettings();
@@ -223,7 +231,9 @@ export class SettingsManager {
   }
 
   /**
-   * Load project settings from .grok/settings.json
+   * Loads project-specific settings from .grok/settings.json.
+   * 
+   * @returns The project settings object.
    */
   public loadProjectSettings(): ProjectSettings {
     try {
@@ -248,7 +258,9 @@ export class SettingsManager {
   }
 
   /**
-   * Save project settings to .grok/settings.json
+   * Saves project settings to .grok/settings.json.
+   * 
+   * @param settings - Settings to merge and save.
    */
   public saveProjectSettings(settings: Partial<ProjectSettings>): void {
     try {
@@ -283,7 +295,7 @@ export class SettingsManager {
   }
 
   /**
-   * Update a specific project setting
+   * Updates a specific field in project settings.
    */
   public updateProjectSetting<K extends keyof ProjectSettings>(
     key: K,
@@ -294,7 +306,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get a specific project setting
+   * Retrieves a specific field from project settings.
    */
   public getProjectSetting<K extends keyof ProjectSettings>(
     key: K
@@ -304,10 +316,12 @@ export class SettingsManager {
   }
 
   /**
-   * Get the current model with proper fallback logic:
+   * Gets the current model using fallback logic:
    * 1. Project-specific model setting
    * 2. User's default model
    * 3. System default
+   * 
+   * @returns The model name to use.
    */
   public getCurrentModel(): string {
     const projectModel = this.getProjectSetting("model");
@@ -324,14 +338,18 @@ export class SettingsManager {
   }
 
   /**
-   * Set the current model for the project
+   * Sets the current model for the current project context.
+   * 
+   * @param model - Model name to set.
    */
   public setCurrentModel(model: string): void {
     this.updateProjectSetting("model", model);
   }
 
   /**
-   * Get available models list from user settings
+   * Retrieves the list of available models from user settings.
+   * 
+   * @returns Array of model names.
    */
   public getAvailableModels(): string[] {
     const models = this.getUserSetting("models");
@@ -339,7 +357,9 @@ export class SettingsManager {
   }
 
   /**
-   * Get API key from user settings or environment
+   * Retrieves the API key from environment variables or user settings.
+   * 
+   * @returns The API key, or undefined if not found.
    */
   public getApiKey(): string | undefined {
     // First check environment variable
@@ -353,7 +373,9 @@ export class SettingsManager {
   }
 
   /**
-   * Get base URL from user settings or environment
+   * Retrieves the API base URL from environment variables or user settings.
+   * 
+   * @returns The base URL.
    */
   public getBaseURL(): string {
     // First check environment variable
@@ -371,7 +393,9 @@ export class SettingsManager {
 }
 
 /**
- * Convenience function to get the singleton instance
+ * Convenience function to retrieve the SettingsManager singleton instance.
+ * 
+ * @returns SettingsManager instance.
  */
 export function getSettingsManager(): SettingsManager {
   return SettingsManager.getInstance();
