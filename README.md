@@ -47,6 +47,12 @@ grok
 
 # Single prompt (Headless mode)
 grok -p "Explain quantum computing in one sentence"
+
+# AI-powered Git operations
+grok git help
+
+# Manage MCP servers
+grok mcp list
 ```
 
 ---
@@ -54,21 +60,35 @@ grok -p "Explain quantum computing in one sentence"
 ## ✨ Features
 
 - **🤖 Conversational AI**: Natural language interface powered by the latest Grok models.
-- **🔍 Intelligent Search**: Uses xAI's native web and X (Twitter) search capabilities.
+- **🔍 Intelligent Search**: Native web and X (Twitter) search capabilities.
 - **📝 Smart File Operations**: AI automatically views, creates, and edits files.
 - **⚡ Bash Integration**: Execute shell commands through natural conversation.
-- **🚀 Morph Fast Apply**: Optional high-speed code editing at 4,500+ tokens/sec.
 - **🔌 MCP Tools**: Full Model Context Protocol support (Linear, GitHub, etc.).
 
 ---
 
-## 🛠 Setup
+## 🛠 Configuration
 
-1. Get your API key from [x.ai](https://x.ai).
-2. Set it up:
-   ```bash
-   export GROK_API_KEY=your_key_here
-   ```
+### Environment Variables
+Set these in your shell profile (e.g., `.zshrc` or `.bashrc`):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GROK_API_KEY` | **(Required)** Your x.ai API key | - |
+| `GROK_BASE_URL` | API base URL | `https://api.x.ai/v1` |
+| `GROK_MODEL` | Default model to use | `grok-4-1-fast-reasoning` |
+
+### CLI Options
+```bash
+Options:
+  -v, --version               Output the version number
+  -d, --directory <dir>       Set working directory
+  -k, --api-key <key>         Grok API key
+  -u, --base-url <url>        Grok API base URL
+  -m, --model <model>         AI model to use (e.g., grok-3, grok-4-latest)
+  -p, --prompt <prompt>       Process a single prompt and exit
+  --max-tool-rounds <n>       Max number of tool execution rounds (default: 400)
+```
 
 ---
 
