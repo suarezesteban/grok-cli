@@ -17,9 +17,7 @@ export function ChatInput({
   const beforeCursor = input.slice(0, cursorPosition);
   const afterCursor = input.slice(cursorPosition);
 
-  // Handle multiline input display
   const lines = input.split("\n");
-  const isMultiline = lines.length > 1;
 
   // Calculate cursor position across lines
   let currentLineIndex = 0;
@@ -43,27 +41,41 @@ export function ChatInput({
   const placeholderText = "Ask me anything...";
   const isPlaceholder = !input;
 
-  if (isMultiline) {
-    return (
-      <Box
-        borderStyle="round"
-        borderColor={borderColor}
-        paddingY={0}
-        marginTop={1}
-      >
-        {lines.map((line, index) => {
-          const isCurrentLine = index === currentLineIndex;
-          const promptChar = index === 0 ? "❯" : "│";
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={borderColor}
+      width="100%"
+      paddingX={1}
+      paddingY={0}
+      marginTop={1}
+    >
+      {lines.map((line, index) => {
+        const isCurrentLine = index === currentLineIndex;
+        const promptChar = index === 0 ? "❯" : "│";
 
-          if (isCurrentLine) {
-            const beforeCursorInLine = line.slice(0, currentCharIndex);
-            const cursorChar =
-              line.slice(currentCharIndex, currentCharIndex + 1) || " ";
-            const afterCursorInLine = line.slice(currentCharIndex + 1);
+        if (isCurrentLine) {
+          const beforeCursorInLine = line.slice(0, currentCharIndex);
+          const cursorChar =
+            line.slice(currentCharIndex, currentCharIndex + 1) || " ";
+          const afterCursorInLine = line.slice(currentCharIndex + 1);
 
-            return (
-              <Box key={index}>
-                <Text color={promptColor}>{promptChar} </Text>
+          return (
+            <Box key={index} height={1}>
+              <Text color={promptColor}>{promptChar} </Text>
+              {isPlaceholder ? (
+                <>
+                  <Text color="gray" dimColor>
+                    {placeholderText}
+                  </Text>
+                  {showCursor && (
+                    <Text backgroundColor="white" color="black">
+                      {" "}
+                    </Text>
+                  )}
+                </>
+              ) : (
                 <Text>
                   {beforeCursorInLine}
                   {showCursor && (
@@ -74,59 +86,18 @@ export function ChatInput({
                   {!showCursor && cursorChar !== " " && cursorChar}
                   {afterCursorInLine}
                 </Text>
-              </Box>
-            );
-          } else {
-            return (
-              <Box key={index}>
-                <Text color={promptColor}>{promptChar} </Text>
-                <Text>{line}</Text>
-              </Box>
-            );
-          }
-        })}
-      </Box>
-    );
-  }
-
-  // Single line input box
-  const cursorChar = input.slice(cursorPosition, cursorPosition + 1) || " ";
-  const afterCursorText = input.slice(cursorPosition + 1);
-
-  return (
-    <Box
-      borderStyle="round"
-      borderColor={borderColor}
-      paddingX={1}
-      paddingY={0}
-      marginTop={1}
-    >
-      <Box>
-        <Text color={promptColor}>❯ </Text>
-        {isPlaceholder ? (
-          <>
-            <Text color="gray" dimColor>
-              {placeholderText}
-            </Text>
-            {showCursor && (
-              <Text backgroundColor="white" color="black">
-                {" "}
-              </Text>
-            )}
-          </>
-        ) : (
-          <Text>
-            {beforeCursor}
-            {showCursor && (
-              <Text backgroundColor="white" color="black">
-                {cursorChar}
-              </Text>
-            )}
-            {!showCursor && cursorChar !== " " && cursorChar}
-            {afterCursorText}
-          </Text>
-        )}
-      </Box>
+              )}
+            </Box>
+          );
+        } else {
+          return (
+            <Box key={index} height={1}>
+              <Text color={promptColor}>{promptChar} </Text>
+              <Text>{line}</Text>
+            </Box>
+          );
+        }
+      })}
     </Box>
   );
 }

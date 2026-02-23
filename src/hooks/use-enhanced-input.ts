@@ -118,23 +118,48 @@ export function useEnhancedInput({
       return;
     }
 
-    // Handle Escape
-    if (key.escape) {
-      onEscape?.();
-      return;
-    }
+    // Handle Enter/Return - be robust about key detection based on diagnostic logs
+    // Shift+Enter sometimes sends "\\\r" with no modifier flags
+    // Option+Enter sometimes sends "\r" with key.return: false
+    const isShiftEnterSequence = inputChar === "\\\r" || inputChar === "\\\n" || key.sequence === "\x1b[13;2u" || key.sequence === "\x1b[10;2u";
+    const isOptionEnterSequence = (inputChar === "\r" && !key.return) || key.sequence === "\x1b\r" || key.sequence === "\x1b\n";
+    const isStandardReturn = key.return || inputChar === "\r" || inputChar === "\n";
+    
+    const isReturnKey = isStandardReturn || isShiftEnterSequence || isOptionEnterSequence;
 
-    // Handle Enter/Return
-    if (key.return) {
-      if (multiline && key.shift) {
-        // Shift+Enter in multiline mode inserts newline
-        const result = insertText(input, cursorPosition, "\n");
-        setInputState(result.text);
-        setCursorPositionState(result.position);
-        setOriginalInput(result.text);
+    if (isReturnKey) {
+      // In multiline mode, Shift/Option+Enter OR the special sequences we found in the logs
+      // should trigger a newline. 
+      const forceNewline = isShiftEnterSequence || isOptionEnterSequence || key.shift || key.meta;
+      
+      // Look back for a backslash immediately before the cursor (manual line continuation)
+      const charBeforeCursor = cursorPosition > 0 ? input[cursorPosition - 1] : "";
+      const isBackslashContinuation = charBeforeCursor === "\\";
+
+      if (multiline && (forceNewline || isBackslashContinuation)) {
+        // If it was a manual backslash followed by a standard Enter, remove the backslash
+        if (isBackslashContinuation && !forceNewline) {
+          const textWithoutBackslash = input.slice(0, cursorPosition - 1) + input.slice(cursorPosition);
+          const result = insertText(textWithoutBackslash, cursorPosition - 1, "\n");
+          setInputState(result.text);
+          setCursorPositionState(result.position);
+          setOriginalInput(result.text);
+        } else {
+          // It's a detected Shift/Option sequence or a meta/shift key
+          const result = insertText(input, cursorPosition, "\n");
+          setInputState(result.text);
+          setCursorPositionState(result.position);
+          setOriginalInput(result.text);
+        }
       } else {
         handleSubmit();
       }
+      return;
+    }
+
+    // Handle Escape - checked AFTER potential Return combo
+    if (key.escape) {
+      onEscape?.();
       return;
     }
 
@@ -277,7 +302,9 @@ export function useEnhancedInput({
 
     // Handle regular character input
     if (inputChar && !key.ctrl && !key.meta) {
-      const result = insertText(input, cursorPosition, inputChar);
+      // Strip carriage returns as they corrupt Ink's ANSI terminal tracking
+      const cleanChar = inputChar.replace(/\r/g, "");
+      const result = insertText(input, cursorPosition, cleanChar);
       setInputState(result.text);
       setCursorPositionState(result.position);
       setOriginalInput(result.text);
