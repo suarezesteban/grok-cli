@@ -87,7 +87,7 @@ export class GrokAgent extends EventEmitter {
     const manager = getSettingsManager();
     const savedModel = manager.getCurrentModel();
     const modelToUse = model || savedModel || "grok-code-fast-1";
-    this.maxToolRounds = maxToolRounds || 400;
+    this.maxToolRounds = maxToolRounds || 10;
     this.grokClient = new GrokClient(apiKey, modelToUse, baseURL);
     this.textEditor = new TextEditorTool();
     this.morphEditor = process.env.MORPH_API_KEY ? new MorphEditorTool() : null;
@@ -565,16 +565,25 @@ Current working directory: ${process.cwd()}`,
         if (accumulatedMessage.tool_calls?.length > 0) {
           toolRounds++;
 
+          // Safety limit: don't execute more than 15 tool calls in a single round
+          const toolCallsToExecute = accumulatedMessage.tool_calls.slice(0, 15);
+          if (accumulatedMessage.tool_calls.length > 15) {
+            yield {
+              type: "content",
+              content: `\n\n[Warning: Too many tool calls requested (${accumulatedMessage.tool_calls.length}). Executing only the first 15 to prevent overload.]`,
+            };
+          }
+
           // Only yield tool_calls if we haven't already yielded them during streaming
           if (!toolCallsYielded) {
             yield {
               type: "tool_calls",
-              toolCalls: accumulatedMessage.tool_calls,
+              toolCalls: toolCallsToExecute,
             };
           }
 
           // Execute tools
-          for (const toolCall of accumulatedMessage.tool_calls) {
+          for (const toolCall of toolCallsToExecute) {
             // Check for cancellation before executing each tool
             if (this.abortController?.signal.aborted) {
               yield {
@@ -585,33 +594,65 @@ Current working directory: ${process.cwd()}`,
               return;
             }
 
-            const result = await this.executeTool(toolCall);
+            console.log(`Executing tool: ${toolCall.function.name} with ID ${toolCall.id}`);
+            
+            // Set a timeout for tool execution (30 seconds)
+            const timeoutPromise = new Promise<ToolResult>((_, reject) =>
+              setTimeout(() => {
+                console.error(`Tool ${toolCall.function.name} (${toolCall.id}) timed out!`);
+                reject(new Error("Tool execution timed out after 30 seconds"));
+              }, 30000)
+            );
 
-            const toolResultEntry: ChatEntry = {
-              type: "tool_result",
-              content: result.success
-                ? result.output || "Success"
-                : result.error || "Error occurred",
-              timestamp: new Date(),
-              toolCall: toolCall,
-              toolResult: result,
-            };
-            this.chatHistory.push(toolResultEntry);
+            try {
+              const result = await Promise.race([
+                this.executeTool(toolCall),
+                timeoutPromise
+              ]);
 
-            yield {
-              type: "tool_result",
-              toolCall,
-              toolResult: result,
-            };
+              console.log(`Tool ${toolCall.function.name} completed successfully`);
 
-            // Add tool result with proper format (needed for AI context)
-            this.messages.push({
-              role: "tool",
-              content: result.success
-                ? result.output || "Success"
-                : result.error || "Error",
-              tool_call_id: toolCall.id,
-            });
+              const toolResultEntry: ChatEntry = {
+                type: "tool_result",
+                content: result.success
+                  ? result.output || "Success"
+                  : result.error || "Error occurred",
+                timestamp: new Date(),
+                toolCall: toolCall,
+                toolResult: result,
+              };
+              this.chatHistory.push(toolResultEntry);
+
+              yield {
+                type: "tool_result",
+                toolCall,
+                toolResult: result,
+              };
+
+              // Add tool result with proper format (needed for AI context)
+              this.messages.push({
+                role: "tool",
+                content: result.success
+                  ? result.output || "Success"
+                  : result.error || "Error",
+                tool_call_id: toolCall.id,
+              });
+            } catch (error: any) {
+              const errorResult = {
+                success: false,
+                error: `Tool execution failed: ${error.message}`,
+              };
+              yield {
+                type: "tool_result",
+                toolCall,
+                toolResult: errorResult,
+              };
+              this.messages.push({
+                role: "tool",
+                content: errorResult.error,
+                tool_call_id: toolCall.id,
+              });
+            }
           }
 
           // Update token count after processing all tool calls to include tool results
@@ -683,6 +724,28 @@ Current working directory: ${process.cwd()}`,
               ? [args.start_line, args.end_line]
               : undefined;
           return await this.textEditor.view(args.path, range);
+
+        case "list_directory":
+          if (!args.path) {
+            return { success: false, error: "Missing required argument: path" };
+          }
+          try {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const fullPath = path.resolve(args.path);
+            const stats = await fs.stat(fullPath);
+            if (!stats.isDirectory()) {
+              return { success: false, error: `Path is not a directory: ${args.path}` };
+            }
+            const entries = await fs.readdir(fullPath, { withFileTypes: true });
+            const list = entries.map(e => e.isDirectory() ? `${e.name}/` : e.name).join('\n');
+            return {
+              success: true,
+              output: `Directory contents of ${args.path}:\n${list}`
+            };
+          } catch (err: any) {
+             return { success: false, error: `Failed to list directory: ${err.message}` };
+          }
 
         case "create_file":
           if (!args.path || args.content === undefined) {
