@@ -1,6 +1,6 @@
 {
   "name": "@kazuki-ookura/grok-cli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "The community maintenance fork of Grok CLI. Fully updated for the latest xAI Responses API with native web/X search support.",
   "type": "module",
   "main": "dist/index.js",
