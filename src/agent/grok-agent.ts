@@ -1,4 +1,5 @@
 import { GrokClient, GrokMessage, GrokToolCall } from "../grok/client.js";
+import { expandFilePaths } from "../utils/file-processor.js";
 import {
   GROK_TOOLS,
   addMCPToolsToGrokTools,
@@ -415,7 +416,9 @@ Current working directory: ${process.cwd()}`,
       timestamp: new Date(),
     };
     this.chatHistory.push(userEntry);
-    this.messages.push({ role: "user", content: message });
+    // Expand @file references if present
+    const expandedMessage = await expandFilePaths(message);
+    this.messages.push({ role: "user", content: expandedMessage });
 
     // Calculate input tokens
     let inputTokens = this.tokenCounter.countMessageTokens(
