@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import * as fs from "node:fs";
 
 interface ChatInputProps {
   input: string;
@@ -8,15 +9,39 @@ interface ChatInputProps {
   isStreaming: boolean;
 }
 
+/**
+ * Helper to render text with @file highlights
+ */
+function HighlightedText({ text }: { text: string }) {
+  if (!text) return null;
+
+  // Split text into parts (words and spaces)
+  const parts = text.split(/(@[\w\-\.\/]+)/g);
+
+  return (
+    <Text>
+      {parts.map((part, i) => {
+        if (part.startsWith("@")) {
+          const filePath = part.substring(1);
+          const exists = fs.existsSync(filePath);
+          return (
+            <Text key={i} color={exists ? "magenta" : undefined}>
+              {part}
+            </Text>
+          );
+        }
+        return <Text key={i}>{part}</Text>;
+      })}
+    </Text>
+  );
+}
+
 export function ChatInput({
   input,
   cursorPosition,
   isProcessing,
   isStreaming,
 }: ChatInputProps) {
-  const beforeCursor = input.slice(0, cursorPosition);
-  const afterCursor = input.slice(cursorPosition);
-
   const lines = input.split("\n");
 
   // Calculate cursor position across lines
@@ -76,16 +101,18 @@ export function ChatInput({
                   )}
                 </>
               ) : (
-                <Text>
-                  {beforeCursorInLine}
+                <Box>
+                  <HighlightedText text={beforeCursorInLine} />
                   {showCursor && (
                     <Text backgroundColor="white" color="black">
                       {cursorChar}
                     </Text>
                   )}
-                  {!showCursor && cursorChar !== " " && cursorChar}
-                  {afterCursorInLine}
-                </Text>
+                  {!showCursor && cursorChar !== " " && (
+                    <HighlightedText text={cursorChar} />
+                  )}
+                  <HighlightedText text={afterCursorInLine} />
+                </Box>
               )}
             </Box>
           );
@@ -93,7 +120,7 @@ export function ChatInput({
           return (
             <Box key={index} height={1}>
               <Text color={promptColor}>{promptChar} </Text>
-              <Text>{line}</Text>
+              <HighlightedText text={line} />
             </Box>
           );
         }
