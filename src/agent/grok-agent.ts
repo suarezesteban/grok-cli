@@ -675,6 +675,9 @@ Current working directory: ${process.cwd()}`,
 
       switch (toolCall.function.name) {
         case "view_file":
+          if (!args.path) {
+            return { success: false, error: "Missing required argument: path" };
+          }
           const range: [number, number] | undefined =
             args.start_line && args.end_line
               ? [args.start_line, args.end_line]
@@ -682,9 +685,15 @@ Current working directory: ${process.cwd()}`,
           return await this.textEditor.view(args.path, range);
 
         case "create_file":
+          if (!args.path || args.content === undefined) {
+            return { success: false, error: "Missing required arguments: path and content" };
+          }
           return await this.textEditor.create(args.path, args.content);
 
         case "str_replace_editor":
+          if (!args.path || !args.old_str || args.new_str === undefined) {
+            return { success: false, error: "Missing required arguments: path, old_str, and new_str" };
+          }
           return await this.textEditor.strReplace(
             args.path,
             args.old_str,
@@ -700,6 +709,9 @@ Current working directory: ${process.cwd()}`,
                 "Morph Fast Apply not available. Please set MORPH_API_KEY environment variable to use this feature.",
             };
           }
+          if (!args.target_file || !args.instructions) {
+            return { success: false, error: "Missing required arguments: target_file and instructions" };
+          }
           return await this.morphEditor.editFile(
             args.target_file,
             args.instructions,
@@ -707,15 +719,27 @@ Current working directory: ${process.cwd()}`,
           );
 
         case "bash":
+          if (!args.command) {
+            return { success: false, error: "Missing required argument: command" };
+          }
           return await this.bash.execute(args.command);
 
         case "create_todo_list":
+          if (!args.todos) {
+            return { success: false, error: "Missing required argument: todos" };
+          }
           return await this.todoTool.createTodoList(args.todos);
 
         case "update_todo_list":
+          if (!args.updates) {
+            return { success: false, error: "Missing required argument: updates" };
+          }
           return await this.todoTool.updateTodoList(args.updates);
 
         case "search":
+          if (!args.query) {
+            return { success: false, error: "Missing required argument: query" };
+          }
           return await this.search.search(args.query, {
             searchType: args.search_type,
             includePattern: args.include_pattern,
