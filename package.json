@@ -1,6 +1,6 @@
 {
   "name": "@kazuki-ookura/grok-cli",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "The community maintenance fork of Grok CLI. Fully updated for the latest xAI Responses API with native web/X search support.",
   "type": "module",
   "main": "dist/index.js",
@@ -62,6 +62,7 @@
     "ink": "^4.4.1",
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
+    "node-pty": "^1.1.0",
     "openai": "^5.10.1",
     "react": "^18.3.1",
     "ripgrep-node": "^1.0.0",
