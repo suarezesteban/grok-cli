@@ -1,6 +1,7 @@
 import { GrokTool } from "./client.js";
 import { MCPManager, MCPTool } from "../mcp/client.js";
 import { loadMCPConfig } from "../mcp/config.js";
+import { CommandManager } from "../agent/command-manager.js";
 
 const BASE_GROK_TOOLS: GrokTool[] = [
   {
@@ -297,6 +298,9 @@ export const GROK_TOOLS: GrokTool[] = buildGrokTools();
 // Global MCP manager instance
 let mcpManager: MCPManager | null = null;
 
+// Global Command manager instance
+let commandManager: CommandManager | null = null;
+
 /**
  * Retrieves the singleton instance of the MCP (Model Context Protocol) manager,
  * initializing it if necessary.
@@ -308,6 +312,19 @@ export function getMCPManager(): MCPManager {
     mcpManager = new MCPManager();
   }
   return mcpManager;
+}
+
+/**
+ * Retrieves the singleton instance of the CommandManager,
+ * initializing it if necessary.
+ * 
+ * @returns CommandManager instance.
+ */
+export function getCommandManager(): CommandManager {
+  if (!commandManager) {
+    commandManager = new CommandManager();
+  }
+  return commandManager;
 }
 
 /**
@@ -413,5 +430,11 @@ export async function getAllGrokTools(): Promise<GrokTool[]> {
   manager.ensureServersInitialized().catch(() => {
     // Ignore initialization errors to avoid blocking
   });
-  return addMCPToolsToGrokTools(GROK_TOOLS);
+  const baseWithMCP = addMCPToolsToGrokTools(GROK_TOOLS);
+  
+  // Add custom command tools
+  const cmdManager = getCommandManager();
+  const commandTools = cmdManager.getTools();
+  
+  return [...baseWithMCP, ...commandTools];
 }
