@@ -4,6 +4,7 @@ import {
   GROK_TOOLS,
   addMCPToolsToGrokTools,
   getAllGrokTools,
+  getCommandManager,
   getMCPManager,
   initializeMCPServers,
 } from "../grok/tools.js";
@@ -22,6 +23,7 @@ import { createTokenCounter, TokenCounter } from "../utils/token-counter.js";
 import { loadCustomInstructions } from "../utils/custom-instructions.js";
 import { getSettingsManager } from "../utils/settings-manager.js";
 import { SkillManager } from "./skill-manager.js";
+import { CommandManager } from "./command-manager.js";
 
 export interface ChatEntry {
   type: "user" | "assistant" | "tool_result" | "tool_call";
@@ -63,6 +65,8 @@ export class GrokAgent extends EventEmitter {
   private maxToolRounds: number;
   private skillManager: SkillManager;
   private skillsLoaded: boolean = false;
+  private commandManager: CommandManager;
+  private commandsLoaded: boolean = false;
 
   /**
    * Initializes a new instance of GrokAgent.
@@ -93,6 +97,7 @@ export class GrokAgent extends EventEmitter {
     this.search = new SearchTool();
     this.tokenCounter = createTokenCounter(modelToUse);
     this.skillManager = new SkillManager();
+    this.commandManager = getCommandManager();
 
     // Initialize MCP servers if configured
     this.initializeMCP();
@@ -444,6 +449,12 @@ Current working directory: ${process.cwd()}`,
         this.skillsLoaded = true;
       }
 
+      // Load custom commands from .grok/commands or .claude/commands
+      if (!this.commandsLoaded) {
+        await this.commandManager.loadCommands(process.cwd());
+        this.commandsLoaded = true;
+      }
+
       // Agent loop - continue until no more tool calls or max rounds reached
       while (toolRounds < maxToolRounds) {
         // Check if operation was cancelled
@@ -717,6 +728,11 @@ Current working directory: ${process.cwd()}`,
             return await this.executeMCPTool(toolCall);
           }
 
+          // Check if this is a custom command tool
+          if (toolCall.function.name.startsWith("cmd__")) {
+            return await this.executeCustomCommand(toolCall);
+          }
+
           return {
             success: false,
             error: `Unknown tool: ${toolCall.function.name}`,
@@ -764,6 +780,26 @@ Current working directory: ${process.cwd()}`,
       return {
         success: false,
         error: `MCP tool execution error: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Executes a custom command tool defined via Markdown.
+   * Strips the `cmd__` prefix and delegates to CommandManager.
+   *
+   * @param toolCall - The tool call from the AI containing the command name and arguments.
+   * @returns Execution result with success status, output, and error.
+   */
+  private async executeCustomCommand(toolCall: GrokToolCall): Promise<ToolResult> {
+    try {
+      const args = JSON.parse(toolCall.function.arguments);
+      const commandName = toolCall.function.name.replace(/^cmd__/, '');
+      return await this.commandManager.executeCommand(commandName, args);
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Custom command execution error: ${error.message}`,
       };
     }
   }

@@ -1,0 +1,298 @@
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
+import { GrokTool } from '../grok/client.js';
+
+/**
+ * Represents a custom command (tool) defined in a Markdown file.
+ *
+ * @example
+ * ```markdown
+ * ---
+ * name: deploy
+ * description: Deploy the application
+ * ---
+ * ## Parameters
+ * ```json
+ * { "type": "object", "properties": { "env": { "type": "string" } }, "required": ["env"] }
+ * ```
+ * ## Script
+ * ```bash
+ * ./deploy.sh {{env}}
+ * ```
+ * ```
+ */
+export interface Command {
+  /** Command name (from YAML frontmatter `name` field) */
+  name: string;
+  /** Command description (from YAML frontmatter `description` field) */
+  description: string;
+  /** Parameter schema for the command (JSON Schema) */
+  parameters: Record<string, unknown>;
+  /** Bash script template to execute */
+  script: string;
+  /** Absolute path to the command definition file */
+  filePath: string;
+}
+
+/**
+ * Manages custom commands (Markdown-based tool definitions) for the Grok Agent.
+ * Scans `.grok/commands` and `.claude/commands` directories in the project,
+ * parses Markdown files, and integrates them as Grok tools.
+ *
+ * @example
+ * ```typescript
+ * const manager = new CommandManager();
+ * await manager.loadCommands(process.cwd());
+ * const tools = manager.getTools(); // Returns GrokTool[]
+ * ```
+ */
+export class CommandManager {
+  private commands: Command[] = [];
+
+  constructor() {}
+
+  /**
+   * Finds the project root from the given directory and loads
+   * all command definitions from the commands directories.
+   *
+   * @param cwd - The starting directory path for the search.
+   * @returns Array of parsed commands.
+   */
+  public async loadCommands(cwd: string): Promise<Command[]> {
+    this.commands = [];
+    const root = this.findProjectRoot(cwd);
+    if (!root) return [];
+
+    const grokCommandsPath = path.join(root, '.grok', 'commands');
+    const claudeCommandsPath = path.join(root, '.claude', 'commands');
+
+    await this.loadCommandsFromDirectory(grokCommandsPath);
+    await this.loadCommandsFromDirectory(claudeCommandsPath);
+
+    return this.commands;
+  }
+
+  /**
+   * Converts loaded commands into GrokTool array format.
+   * Each tool is registered with a `cmd__` prefix.
+   *
+   * @returns Array of tools in GrokTool format.
+   */
+  public getTools(): GrokTool[] {
+    return this.commands.map((cmd) => ({
+      type: "function" as const,
+      function: {
+        name: `cmd__${cmd.name}`,
+        description: `[Custom Command] ${cmd.description}`,
+        parameters: cmd.parameters as {
+          type: "object";
+          properties: Record<string, any>;
+          required: string[];
+        },
+      },
+    }));
+  }
+
+  /**
+   * Retrieves a Command object by name.
+   *
+   * @param name - Command name (without `cmd__` prefix).
+   * @returns The matching Command object, or undefined if not found.
+   */
+  public getCommand(name: string): Command | undefined {
+    return this.commands.find((c) => c.name === name);
+  }
+
+  /**
+   * Executes a command by name with the given arguments.
+   * Replaces `{{key}}` placeholders in the script template with argument values,
+   * then executes the resulting script via Bash.
+   *
+   * @param name - Command name (without `cmd__` prefix).
+   * @param args - Object containing argument key-value pairs.
+   * @returns Execution result with success status, output, and error.
+   */
+  public async executeCommand(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<{ success: boolean; output?: string; error?: string }> {
+    const command = this.getCommand(name);
+    if (!command) {
+      return { success: false, error: `Unknown command: ${name}` };
+    }
+
+    // Replace placeholders in script template
+    let script = command.script;
+    for (const [key, value] of Object.entries(args)) {
+      const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      script = script.replace(placeholder, String(value));
+    }
+
+    // Remove any remaining unreplaced placeholders
+    script = script.replace(/\{\{[^}]+\}\}/g, '');
+
+    return new Promise((resolve) => {
+      exec(script, { timeout: 30000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error) {
+          resolve({
+            success: false,
+            error: `Command failed: ${error.message}\n${stderr}`,
+          });
+        } else {
+          resolve({
+            success: true,
+            output: stdout || stderr || "Command completed successfully.",
+          });
+        }
+      });
+    });
+  }
+
+  /**
+   * Traverses parent directories to find the project root.
+   * A directory is considered the project root if it contains
+   * `.grok`, `.claude`, or `.git`.
+   *
+   * @param startPath - The starting directory path.
+   * @returns The project root path, or null if not found.
+   */
+  private findProjectRoot(startPath: string): string | null {
+    let currentPath = startPath;
+    while (currentPath !== path.parse(currentPath).root) {
+      if (
+        fs.existsSync(path.join(currentPath, '.grok')) ||
+        fs.existsSync(path.join(currentPath, '.claude')) ||
+        fs.existsSync(path.join(currentPath, '.git'))
+      ) {
+        return currentPath;
+      }
+      currentPath = path.dirname(currentPath);
+    }
+
+    // Check the filesystem root as well
+    if (
+      fs.existsSync(path.join(currentPath, '.grok')) ||
+      fs.existsSync(path.join(currentPath, '.claude')) ||
+      fs.existsSync(path.join(currentPath, '.git'))
+    ) {
+      return currentPath;
+    }
+
+    return null;
+  }
+
+  /**
+   * Recursively loads `.md` files from the given directory
+   * and registers parsed commands.
+   *
+   * @param dirPath - Path to the commands directory.
+   */
+  private async loadCommandsFromDirectory(dirPath: string): Promise<void> {
+    if (!fs.existsSync(dirPath)) return;
+
+    try {
+      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          await this.loadCommandsFromDirectory(fullPath);
+        } else if (entry.name.endsWith('.md')) {
+          const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+          const command = this.parseCommand(fileContent, fullPath);
+          if (command) {
+            this.commands.push(command);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to load commands from ${dirPath}:`, error);
+    }
+  }
+
+  /**
+   * Parses a Markdown file to extract a command definition.
+   *
+   * Expected format:
+   * ```markdown
+   * ---
+   * name: command_name
+   * description: What this command does
+   * ---
+   * ## Parameters
+   * ```json
+   * { "type": "object", "properties": { ... } }
+   * ```
+   * ## Script
+   * ```bash
+   * echo "Hello, {{name}}!"
+   * ```
+   * ```
+   *
+   * @param content - Full content of the Markdown file.
+   * @param filePath - Absolute path to the file being parsed.
+   * @returns A Command object on success, or null if parsing fails.
+   */
+  public parseCommand(content: string, filePath: string): Command | null {
+    // Extract YAML frontmatter
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+    if (!frontmatterMatch) return null;
+
+    const frontmatter = frontmatterMatch[1];
+    const body = frontmatterMatch[2];
+
+    const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+    const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+
+    if (!nameMatch) return null;
+
+    const name = nameMatch[1].trim();
+    const description = descMatch ? descMatch[1].trim() : `Custom command: ${name}`;
+
+    // Extract parameters JSON from ```json block
+    let parameters: Record<string, unknown> = {
+      type: "object",
+      properties: {},
+      required: [],
+    };
+
+    const jsonMatch = body.match(/```json\s*\n([\s\S]*?)\n\s*```/);
+    if (jsonMatch) {
+      try {
+        parameters = JSON.parse(jsonMatch[1].trim());
+      } catch {
+        console.warn(`Failed to parse parameters JSON in ${filePath}`);
+      }
+    }
+
+    // Extract script from ```bash or ```sh block
+    let script = '';
+    const scriptMatch = body.match(/```(?:bash|sh)\s*\n([\s\S]*?)\n\s*```/);
+    if (scriptMatch) {
+      script = scriptMatch[1].trim();
+    }
+
+    // If no script block found, try to extract content after "## Script" or "## Command" heading
+    if (!script) {
+      const scriptSectionMatch = body.match(/##\s*(?:Script|Command)\s*\n([\s\S]*?)(?=\n##|$)/i);
+      if (scriptSectionMatch) {
+        script = scriptSectionMatch[1].trim();
+      }
+    }
+
+    if (!script) {
+      console.warn(`No script found in command file: ${filePath}`);
+      return null;
+    }
+
+    return {
+      name,
+      description,
+      parameters,
+      script,
+      filePath,
+    };
+  }
+}
