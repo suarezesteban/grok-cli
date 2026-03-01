@@ -345,6 +345,103 @@ async function processPromptHeadless(
   }
 }
 
+/**
+ * Processes a single prompt using streaming and outputs newline-delimited JSON
+ * for structured consumption by external tools (e.g., platform-template agent).
+ *
+ * Each line is a JSON object with a `type` field.
+ */
+async function processPromptStreamJson(
+  prompt: string,
+  apiKey: string,
+  baseURL?: string,
+  model?: string,
+  maxToolRounds?: number
+): Promise<void> {
+  try {
+    const agent = new GrokAgent(apiKey, baseURL, model, maxToolRounds);
+
+    // Configure confirmation service for headless mode (auto-approve all operations)
+    const confirmationService = ConfirmationService.getInstance();
+    confirmationService.setSessionFlag("allOperations", true);
+
+    // Emit init message
+    const line = (obj: Record<string, unknown>) =>
+      process.stdout.write(JSON.stringify(obj) + "\n");
+
+    line({
+      type: "system",
+      subtype: "init",
+      model: model || "grok-4-1-fast-reasoning",
+    });
+
+    // Stream the response
+    for await (const chunk of agent.processUserMessageStream(prompt)) {
+      switch (chunk.type) {
+        case "content":
+          if (chunk.content) {
+            line({
+              type: "assistant",
+              content: chunk.content,
+              streaming: true,
+            });
+          }
+          break;
+
+        case "tool_calls":
+          if (chunk.toolCalls) {
+            for (const tc of chunk.toolCalls) {
+              line({
+                type: "tool_call",
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              });
+            }
+          }
+          break;
+
+        case "tool_result":
+          if (chunk.toolCall) {
+            line({
+              type: "tool_result",
+              id: chunk.toolCall.id,
+              name: chunk.toolCall.function.name,
+              content: chunk.toolResult?.success
+                ? chunk.toolResult.output || "Success"
+                : chunk.toolResult?.error || "Error",
+              success: chunk.toolResult?.success ?? false,
+            });
+          }
+          break;
+
+        case "token_count":
+          line({
+            type: "usage",
+            tokens: chunk.tokenCount,
+          });
+          break;
+
+        case "done":
+          line({
+            type: "result",
+            subtype: "success",
+          });
+          break;
+      }
+    }
+  } catch (error: any) {
+    process.stdout.write(
+      JSON.stringify({
+        type: "result",
+        subtype: "error",
+        message: error.message,
+      }) + "\n"
+    );
+    process.exit(1);
+  }
+}
+
 program
   .name("grok")
   .description(
@@ -370,6 +467,10 @@ program
     "--max-tool-rounds <rounds>",
     "maximum number of tool execution rounds (default: 400)",
     "400"
+  )
+  .option(
+    "--output-format <format>",
+    "output format: text (default) or stream-json"
   )
   .action(async (message, options) => {
     if (options.directory) {
@@ -401,6 +502,18 @@ program
       // Save API key and base URL to user settings if provided via command line
       if (options.apiKey || options.baseUrl) {
         await saveCommandLineSettings(options.apiKey, options.baseUrl);
+      }
+
+      // Stream-JSON headless mode: process prompt with structured streaming output
+      if (options.outputFormat === "stream-json" && options.prompt) {
+        await processPromptStreamJson(
+          options.prompt,
+          apiKey,
+          baseURL,
+          model,
+          maxToolRounds
+        );
+        return;
       }
 
       // Headless mode: process prompt and exit
